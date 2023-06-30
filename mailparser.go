@@ -2,33 +2,46 @@ package mailparser
 
 import (
 	"encoding/base64"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"mime/quotedprintable"
 	"net/mail"
 	"strings"
+	"time"
 
 	"golang.org/x/text/encoding/simplifiedchinese"
 	"golang.org/x/text/transform"
 )
 
+const (
+	// multipart/alternative, multipart/mixed, multipart/related
+	multipartPrefix = "multipart/"
+	// text/html, text/plain
+	textPrefix = "text/"
+)
+
+// Header mail message header.
 type Header struct {
-	Date      string `json:"Date"`       // 邮件的日期和时间
-	From      string `json:"From"`       // 发件人的电子邮件地址
-	To        string `json:"To"`         // 收件人的电子邮件地址
-	Cc        string `json:"Cc"`         // 抄送(Carbon Copy)的收件人的电子邮件地址
-	Bcc       string `json:"Bcc"`        // 密送(Blind Carbon Copy)的收件人的电子邮件地址
-	Subject   string `json:"Subject"`    // 邮件的主题
-	MessageID string `json:"Message-ID"` // 邮件的唯一标识符
+	From        string    `json:"From"`         // 发件人的电子邮件地址
+	To          string    `json:"To"`           // 收件人的电子邮件地址
+	Cc          string    `json:"Cc"`           // 抄送(Carbon Copy)的收件人的电子邮件地址
+	Bcc         string    `json:"Bcc"`          // 密送(Blind Carbon Copy)的收件人的电子邮件地址
+	Subject     string    `json:"Subject"`      // 邮件的主题
+	MessageID   string    `json:"Message-ID"`   // 邮件的唯一标识符
+	ContentType string    `json:"Content-Type"` // 邮件的内容类型
+	Date        time.Time `json:"Date"`         // 邮件的日期和时间
 }
 
+// MailMessage mail message.
 type MailMessage struct {
-	Header *Header
+	Header
 
 	Body string `json:"Body"`
 }
 
+// Parse mail message.
 func Parse(m *mail.Message) (*MailMessage, error) {
 	header, err := ParseHeader(m)
 	if err != nil {
@@ -41,19 +54,15 @@ func Parse(m *mail.Message) (*MailMessage, error) {
 	}
 
 	return &MailMessage{
-		Header: header,
+		Header: *header,
 		Body:   body,
 	}, nil
 }
 
+// ParseHeader mail message headers.
 func ParseHeader(m *mail.Message) (*Header, error) {
 	dec := new(mime.WordDecoder)
 	dec.CharsetReader = charsetReader
-
-	date, err := dec.DecodeHeader(m.Header.Get("Date"))
-	if err != nil {
-		return nil, err
-	}
 
 	from, err := dec.DecodeHeader(m.Header.Get("From"))
 	if err != nil {
@@ -80,51 +89,65 @@ func ParseHeader(m *mail.Message) (*Header, error) {
 		return nil, err
 	}
 
-	messageID, err := dec.DecodeHeader(m.Header.Get("Message-ID"))
+	date := m.Header.Get("Date")
+	dateTime, err := mail.ParseDate(date)
 	if err != nil {
 		return nil, err
 	}
 
+	messageID := m.Header.Get("Message-ID")
+	contentType := m.Header.Get("Content-Type")
+
 	header := &Header{
-		Date:      date,
-		From:      from,
-		To:        to,
-		Cc:        cc,
-		Bcc:       bcc,
-		Subject:   subject,
-		MessageID: messageID,
+		Date:        dateTime,
+		From:        from,
+		To:          to,
+		Cc:          cc,
+		Bcc:         bcc,
+		Subject:     subject,
+		MessageID:   strings.Trim(messageID, "<>"),
+		ContentType: contentType,
 	}
 
 	return header, nil
 }
 
+// ParseBody mail message body.
 func ParseBody(m *mail.Message) (string, error) {
-	mediaType, params, err := mime.ParseMediaType(m.Header.Get("Content-Type"))
+	contentType := m.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "text/plain"
+	}
+
+	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
 		return "", err
 	}
 
 	body := ""
 
-	if strings.HasPrefix(mediaType, "multipart/") {
+	if strings.HasPrefix(mediaType, multipartPrefix) {
 		content, err := parseMultipartBody(m.Body, params["boundary"])
 		if err != nil {
 			return "", err
 		}
 
 		body = strings.Join(content, "\n")
-	} else if strings.HasPrefix(mediaType, "text/plain") {
+	} else if strings.HasPrefix(mediaType, textPrefix) {
 		textBody, err := parseTextBody(m)
 		if err != nil {
 			return "", err
 		}
 
 		body = textBody
+	} else {
+		return "", fmt.Errorf("unsupported content type: %s", mediaType)
 	}
 
 	return body, nil
 }
 
+// ParseTextBody for content type text/plain, text/html.
 func parseTextBody(m *mail.Message) (string, error) {
 	contentType := m.Header.Get("Content-Type")
 	contentTransferEncoding := m.Header.Get("Content-Transfer-Encoding")
@@ -147,6 +170,7 @@ func parseTextBody(m *mail.Message) (string, error) {
 	return string(body), nil
 }
 
+// ParseMultipartBody for content type multipart/alternative, multipart/mixed, multipart/related.
 func parseMultipartBody(body io.Reader, boundary string) ([]string, error) {
 	var content []string
 
@@ -165,13 +189,24 @@ func parseMultipartBody(body io.Reader, boundary string) ([]string, error) {
 		}
 
 		contentType := part.Header.Get("Content-Type")
-		contentTransferEncoding := part.Header.Get("Content-Transfer-Encoding")
+		mediaType, params, err := mime.ParseMediaType(contentType)
+		if err != nil {
+			return nil, err
+		}
+		if strings.HasPrefix(mediaType, multipartPrefix) {
+			content, err = parseMultipartBody(part, params["boundary"])
+			if err != nil {
+				return nil, err
+			}
+			continue
+		}
 
 		bodyPart, err := io.ReadAll(part)
 		if err != nil {
 			return nil, err
 		}
 
+		contentTransferEncoding := part.Header.Get("Content-Transfer-Encoding")
 		deTransferedBody, err := deTransferEncoding(contentTransferEncoding, bodyPart)
 		if err != nil {
 			return nil, err
@@ -183,10 +218,6 @@ func parseMultipartBody(body io.Reader, boundary string) ([]string, error) {
 		}
 
 		content = append(content, string(decodedBody))
-
-		if part.Header.Get("Content-Type") == "multipart/alternative" {
-			break
-		}
 	}
 
 	return content, nil
