@@ -6,6 +6,7 @@ Go lib for parsing email in simple way.
 
 - Support parsing emails with content types of `text/*` and `multipart/*`.
 - Support parsing Chinese content, such as Chinese characters in email address aliases, email subject, and email content.
+- Support parsing email attachments.
 - Support parsing emails with content encoded in base64.
 - Support parsing email headers and email content separately, or parse them all at once.
 
@@ -63,13 +64,20 @@ func main() {
 			continue
 		}
 
-		mailMessage, err := mailparser.Parse(m)
+		res, err := mailparser.Parse(m)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
-		fmt.Printf("%+v\n", mailMessage)
+		// check MailMessage
+		fmt.Printf("result: %+v\n", res)
+
+		// check attachments
+		for _, v := range res.Attachments {
+			// You can handle the file data (v.Data) appropriately based on the content type.
+			fmt.Printf("filename: %s, content-type: %s\n", v.Filename, v.ContentType)
+		}
 	}
 }
 ```

@@ -1,6 +1,7 @@
 package mailparser
 
 import (
+	"bytes"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -28,17 +29,26 @@ type Header struct {
 	To          string    `json:"To"`           // 收件人的电子邮件地址
 	Cc          string    `json:"Cc"`           // 抄送(Carbon Copy)的收件人的电子邮件地址
 	Bcc         string    `json:"Bcc"`          // 密送(Blind Carbon Copy)的收件人的电子邮件地址
+	ReplyTo     string    `json:"Reply-To"`     // 回复的电子邮件地址
 	Subject     string    `json:"Subject"`      // 邮件的主题
 	MessageID   string    `json:"Message-ID"`   // 邮件的唯一标识符
 	ContentType string    `json:"Content-Type"` // 邮件的内容类型
 	Date        time.Time `json:"Date"`         // 邮件的日期和时间
 }
 
+// Attachment mail attachment.
+type Attachment struct {
+	Filename    string
+	ContentType string
+	Data        io.Reader
+}
+
 // MailMessage mail message.
 type MailMessage struct {
 	Header
 
-	Body string `json:"Body"`
+	Body        string        `json:"Body"`
+	Attachments []*Attachment `json:"Attachments"`
 }
 
 // Parse mail message.
@@ -48,14 +58,15 @@ func Parse(m *mail.Message) (*MailMessage, error) {
 		return nil, err
 	}
 
-	body, err := ParseBody(m)
+	body, attachments, err := ParseBody(m)
 	if err != nil {
 		return nil, err
 	}
 
 	return &MailMessage{
-		Header: *header,
-		Body:   body,
+		Header:      *header,
+		Body:        body,
+		Attachments: attachments,
 	}, nil
 }
 
@@ -84,6 +95,11 @@ func ParseHeader(m *mail.Message) (*Header, error) {
 		return nil, err
 	}
 
+	replyTo, err := dec.DecodeHeader(m.Header.Get("Reply-To"))
+	if err != nil {
+		return nil, err
+	}
+
 	subject, err := dec.DecodeHeader(m.Header.Get("Subject"))
 	if err != nil {
 		return nil, err
@@ -104,6 +120,7 @@ func ParseHeader(m *mail.Message) (*Header, error) {
 		To:          to,
 		Cc:          cc,
 		Bcc:         bcc,
+		ReplyTo:     replyTo,
 		Subject:     subject,
 		MessageID:   strings.Trim(messageID, "<>"),
 		ContentType: contentType,
@@ -113,7 +130,7 @@ func ParseHeader(m *mail.Message) (*Header, error) {
 }
 
 // ParseBody mail message body.
-func ParseBody(m *mail.Message) (string, error) {
+func ParseBody(m *mail.Message) (string, []*Attachment, error) {
 	contentType := m.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "text/plain"
@@ -121,30 +138,34 @@ func ParseBody(m *mail.Message) (string, error) {
 
 	mediaType, params, err := mime.ParseMediaType(contentType)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 
-	body := ""
+	var (
+		body        string
+		attachments []*Attachment
+	)
 
 	if strings.HasPrefix(mediaType, multipartPrefix) {
-		content, err := parseMultipartBody(m.Body, params["boundary"])
+		var content []string
+		content, attachments, err = parseMultipartBody(m.Body, params["boundary"])
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 
 		body = strings.Join(content, "\n")
 	} else if strings.HasPrefix(mediaType, textPrefix) {
 		textBody, err := parseTextBody(m)
 		if err != nil {
-			return "", err
+			return "", nil, err
 		}
 
 		body = textBody
 	} else {
-		return "", fmt.Errorf("unsupported content type: %s", mediaType)
+		return "", nil, fmt.Errorf("unsupported content type: %s", mediaType)
 	}
 
-	return body, nil
+	return body, attachments, nil
 }
 
 // ParseTextBody for content type text/plain, text/html.
@@ -171,8 +192,11 @@ func parseTextBody(m *mail.Message) (string, error) {
 }
 
 // ParseMultipartBody for content type multipart/alternative, multipart/mixed, multipart/related.
-func parseMultipartBody(body io.Reader, boundary string) ([]string, error) {
-	var content []string
+func parseMultipartBody(body io.Reader, boundary string) ([]string, []*Attachment, error) {
+	var (
+		content     []string
+		attachments []*Attachment
+	)
 
 	mr := multipart.NewReader(body, boundary)
 
@@ -185,42 +209,57 @@ func parseMultipartBody(body io.Reader, boundary string) ([]string, error) {
 			break
 		}
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		contentType := part.Header.Get("Content-Type")
+
 		mediaType, params, err := mime.ParseMediaType(contentType)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
+
 		if strings.HasPrefix(mediaType, multipartPrefix) {
-			content, err = parseMultipartBody(part, params["boundary"])
+			content, attachments, err = parseMultipartBody(part, params["boundary"])
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			continue
 		}
 
 		bodyPart, err := io.ReadAll(part)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		contentTransferEncoding := part.Header.Get("Content-Transfer-Encoding")
 		deTransferedBody, err := deTransferEncoding(contentTransferEncoding, bodyPart)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
 		decodedBody, err := decodeContent(contentType, deTransferedBody)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 
-		content = append(content, string(decodedBody))
+		if isAttachment(part) {
+			filename, err := dec.DecodeHeader(part.FileName())
+			if err != nil {
+				return nil, nil, err
+			}
+
+			attachments = append(attachments, &Attachment{
+				Filename:    filename,
+				ContentType: strings.Split(contentType, ";")[0],
+				Data:        bytes.NewReader(decodedBody),
+			})
+		} else {
+			content = append(content, string(decodedBody))
+		}
 	}
 
-	return content, nil
+	return content, attachments, nil
 }
 
 func deTransferEncoding(contentTransferEncoding string, body []byte) ([]byte, error) {
@@ -284,4 +323,8 @@ func getContentCharset(contentType string) (string, error) {
 	}
 
 	return charset, nil
+}
+
+func isAttachment(part *multipart.Part) bool {
+	return part.FileName() != ""
 }

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v0.2.0
+
+### Added
+
+- 增加解析附件功能
+- 增加 Header: `Reply-To`
+
 ## v0.1.1
 
 ### Fixed
