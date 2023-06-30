@@ -2,15 +2,25 @@
 
 Go lib for parsing email in simple way.
 
-## Usage Examle
+## Features
+
+- Support parsing emails with content types of `text/*` and `multipart/*`.
+- Support parsing Chinese content, such as Chinese characters in email address aliases, email subject, and email content.
+- Support parsing emails with content encoded in base64.
+- Support parsing email headers and email content separately, or parse them all at once.
+
+## Examle
 
 ```go
 package main
 
 import (
+	"fmt"
+	"log"
 	"net/mail"
 
 	"github.com/knadh/go-pop3"
+
 	"github.com/windvalley/go-mailparser"
 )
 
@@ -63,3 +73,8 @@ func main() {
 	}
 }
 ```
+
+## License
+
+This project is under the MIT License.
+See the [LICENSE](LICENSE) file for the full license text.

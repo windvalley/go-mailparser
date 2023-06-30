@@ -7,11 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v0.1.1
+
+### Fixed
+
+- 修复针对`multipart/*`类型邮件内容解析不完全的问题
+
+### Changed
+
+- `Header.Date`由`string`类型改为`time.Time`类型
+- 优化`Header.MessageID`获取的值: 去掉`<>`
+
 ## v0.1.0
 
 ### Added
 
-- 支持解析纯文本邮件和`multipart/alternative`类型邮件
-- 支持中文内容解析
-- 支持解析通过 base64 编码后的邮件
-- 可分别解析邮件头和邮件内容, 也可一次全部解析出来
+- 支持解析邮件内容类型为`text/*`和`multipart/*`的邮件
+- 支持解析中文内容, 比如邮件地址别名、邮件主题、邮件内容中的中文字符
+- 支持解析邮件内容经过 `base64` 编码的邮件
+- 支持分别解析邮件头和邮件内容, 或一次全部解析出来
