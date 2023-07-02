@@ -18,7 +18,6 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/mail"
 
 	"github.com/knadh/go-pop3"
 
@@ -58,13 +57,8 @@ func main() {
 			continue
 		}
 
-		m, err := mail.ReadMessage(b)
-		if err != nil {
-			fmt.Println(err)
-			continue
-		}
-
-		res, err := mailparser.Parse(m)
+		// parse email
+		res, err := mailparser.Parse(b)
 		if err != nil {
 			fmt.Println(err)
 			continue

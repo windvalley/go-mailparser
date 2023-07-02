@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v0.2.1
+
+### Changed
+
+- 优化`Parse`、`ParseHeader`、`ParseBody`函数的传参, 进一步封装, 使更易用
+
 ## v0.2.0
 
 ### Added

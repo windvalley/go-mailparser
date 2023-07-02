@@ -17,9 +17,9 @@ import (
 )
 
 const (
-	// multipart/alternative, multipart/mixed, multipart/related
+	// multipart/alternative, multipart/mixed, multipart/related...
 	multipartPrefix = "multipart/"
-	// text/html, text/plain
+	// text/html, text/plain, text/markdown...
 	textPrefix = "text/"
 )
 
@@ -52,13 +52,13 @@ type MailMessage struct {
 }
 
 // Parse mail message.
-func Parse(m *mail.Message) (*MailMessage, error) {
-	header, err := ParseHeader(m)
+func Parse(r io.Reader) (*MailMessage, error) {
+	header, err := ParseHeader(r)
 	if err != nil {
 		return nil, err
 	}
 
-	body, attachments, err := ParseBody(m)
+	body, attachments, err := ParseBody(r)
 	if err != nil {
 		return nil, err
 	}
@@ -71,7 +71,12 @@ func Parse(m *mail.Message) (*MailMessage, error) {
 }
 
 // ParseHeader mail message headers.
-func ParseHeader(m *mail.Message) (*Header, error) {
+func ParseHeader(r io.Reader) (*Header, error) {
+	m, err := mail.ReadMessage(r)
+	if err != nil {
+		return nil, err
+	}
+
 	dec := new(mime.WordDecoder)
 	dec.CharsetReader = charsetReader
 
@@ -130,7 +135,12 @@ func ParseHeader(m *mail.Message) (*Header, error) {
 }
 
 // ParseBody mail message body.
-func ParseBody(m *mail.Message) (string, []*Attachment, error) {
+func ParseBody(r io.Reader) (string, []*Attachment, error) {
+	m, err := mail.ReadMessage(r)
+	if err != nil {
+		return "", nil, err
+	}
+
 	contentType := m.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "text/plain"
