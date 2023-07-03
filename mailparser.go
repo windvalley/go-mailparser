@@ -53,12 +53,17 @@ type MailMessage struct {
 
 // Parse mail message.
 func Parse(r io.Reader) (*MailMessage, error) {
-	header, err := ParseHeader(r)
+	m, err := mail.ReadMessage(r)
 	if err != nil {
 		return nil, err
 	}
 
-	body, attachments, err := ParseBody(r)
+	header, err := parseHeader(m)
+	if err != nil {
+		return nil, err
+	}
+
+	body, attachments, err := parseBody(m)
 	if err != nil {
 		return nil, err
 	}
@@ -77,6 +82,10 @@ func ParseHeader(r io.Reader) (*Header, error) {
 		return nil, err
 	}
 
+	return parseHeader(m)
+}
+
+func parseHeader(m *mail.Message) (*Header, error) {
 	dec := new(mime.WordDecoder)
 	dec.CharsetReader = charsetReader
 
@@ -141,6 +150,10 @@ func ParseBody(r io.Reader) (string, []*Attachment, error) {
 		return "", nil, err
 	}
 
+	return parseBody(m)
+}
+
+func parseBody(m *mail.Message) (string, []*Attachment, error) {
 	contentType := m.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "text/plain"

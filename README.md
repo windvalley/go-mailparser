@@ -18,20 +18,15 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 
-	"github.com/knadh/go-pop3"
+	"github.com/bytbox/go-pop3"
 
 	"github.com/windvalley/go-mailparser"
 )
 
 func main() {
-	p := pop3.New(pop3.Opt{
-		Host:       "mail.xxx.com",
-		Port:       110,
-		TLSEnabled: false,
-	})
-
-	c, err := p.NewConn()
+	c, err := pop3.Dial("mail.xxx.com:110")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -45,20 +40,23 @@ func main() {
 		log.Fatal(err)
 	}
 
-	msgs, err := c.List(0)
+	msgs, _, err := c.ListAll()
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	for _, v := range msgs {
-		b, err := c.Cmd("RETR", true, v.ID)
+		msg, err := c.Retr(v)
 		if err != nil {
 			fmt.Println(err)
 			continue
 		}
 
+		// string to io.Reader
+		msgReader := strings.NewReader(msg)
+
 		// parse email
-		res, err := mailparser.Parse(b)
+		res, err := mailparser.Parse(msgReader)
 		if err != nil {
 			fmt.Println(err)
 			continue

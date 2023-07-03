@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## v0.2.2
+
+### Fixed
+
+- 修复解析邮件内容报错的问题
+
 ## v0.2.1
 
 ### Changed
