@@ -29,9 +29,11 @@ type Header struct {
 	To          string    `json:"To"`           // 收件人的电子邮件地址
 	Cc          string    `json:"Cc"`           // 抄送(Carbon Copy)的收件人的电子邮件地址
 	Bcc         string    `json:"Bcc"`          // 密送(Blind Carbon Copy)的收件人的电子邮件地址
-	ReplyTo     string    `json:"Reply-To"`     // 回复的电子邮件地址
+	ReplyTo     string    `json:"Reply-To"`     // 告诉收件人向这个地址回复邮件
 	Subject     string    `json:"Subject"`      // 邮件的主题
 	MessageID   string    `json:"Message-ID"`   // 邮件的唯一标识符
+	InReplyTo   string    `json:"In-Reply-To"`  // 该邮件回复的邮件的MessageID
+	References  string    `json:"References"`   // 当一封邮件被回复或转发时, 其References字段会包含该邮件及其之前的所有相关邮件的Message-ID
 	ContentType string    `json:"Content-Type"` // 邮件的内容类型
 	Date        time.Time `json:"Date"`         // 邮件的日期和时间
 }
@@ -127,6 +129,8 @@ func parseHeader(m *mail.Message) (*Header, error) {
 
 	messageID := m.Header.Get("Message-ID")
 	contentType := m.Header.Get("Content-Type")
+	inReplyTo := m.Header.Get("In-Reply-To")
+	references := m.Header.Get("References")
 
 	header := &Header{
 		Date:        dateTime,
@@ -137,6 +141,8 @@ func parseHeader(m *mail.Message) (*Header, error) {
 		ReplyTo:     replyTo,
 		Subject:     subject,
 		MessageID:   strings.Trim(messageID, "<>"),
+		InReplyTo:   strings.Trim(inReplyTo, "<>"),
+		References:  strings.Trim(references, "<>"),
 		ContentType: contentType,
 	}
 
